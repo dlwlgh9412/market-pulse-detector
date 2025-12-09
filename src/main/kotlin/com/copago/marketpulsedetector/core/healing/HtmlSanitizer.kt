@@ -9,27 +9,46 @@ import org.springframework.stereotype.Component
 class HtmlSanitizer {
     fun sanitize(rawHtml: String): String {
         if (rawHtml.isBlank()) return ""
+        val doc = Jsoup.parse(rawHtml)
+        val blacklist = "script, style, svg, iframe, noscript, link, meta, " +
+                "header, footer, nav, aside, .footer, .bottom, #footer, .copyright, .ad, .banner"
+        doc.select(blacklist).remove()
+        removeComments(doc)
+        cleanAttributes(doc)
+        truncateTextContent(doc.body())
+        return cleanOutput(doc.body().html())
+    }
+
+    fun sanitizeForStructure(rawHtml: String): String {
+        if (rawHtml.isBlank()) return ""
 
         val doc = Jsoup.parse(rawHtml)
 
-        val blacklist = "script, style, svg, iframe, noscript, link, meta, " +
-                "header, footer, nav, aside, " +
-                ".footer, .bottom, #footer, .copyright, .ad, .banner"
-
+        val blacklist = "script, style, svg, iframe, noscript, meta, link, header, footer, nav, aside"
         doc.select(blacklist).remove()
 
-        // 주석 제거
         removeComments(doc)
+        cleanAttributes(doc.body())
+        minimizeTextNodes(doc.body())
 
-        // 불필요한 속성 제거
-        // id, class만 남기고 style, onclick, data-* 등은 제거
-        cleanAttributes(doc)
+        return cleanOutput(doc.body().html())
+    }
 
-        truncateTextContent(doc.body())
+    private fun minimizeTextNodes(element: Element) {
+        for (node in element.textNodes()) {
+            if (node.text().isNotBlank()) {
+                node.text("T")
+            }
+        }
 
-        return doc.body().html()
-            .replace(Regex("\\s+"), " ") // 연속된 공백을 하나로
-            .replace(Regex(">\\s+<"), "><") // 태그 사이 공백 제거
+        for (child in element.children()) {
+            minimizeTextNodes(child)
+        }
+    }
+
+    private fun cleanOutput(html: String): String {
+        return html.replace(Regex("\\s+"), " ")
+            .replace(Regex(">\\s+<"), "><")
             .trim()
     }
 
@@ -69,14 +88,10 @@ class HtmlSanitizer {
         for (node in element.textNodes()) {
             val text = node.text().trim()
             if (text.isNotEmpty()) {
-                // 15자 이상이면 자르고 "..." 붙임
-                // 이렇게 하면 긴 저작권 문구는 파괴되고, 짧은 제목(키워드)은 살아남음
                 val newText = if (text.length > 15) text.substring(0, 15) + "..." else text
                 node.text(newText)
             }
         }
-
-        // 재귀 호출
         for (child in element.children()) {
             truncateTextContent(child)
         }

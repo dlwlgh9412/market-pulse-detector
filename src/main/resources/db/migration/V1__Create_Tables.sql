@@ -28,10 +28,10 @@ create table tbl_crawl_source
     last_generated_at  timestamp     null
 );
 
-insert into tbl_crawl_source (site_id, page_rule_id, source_url, description, crawl_interval_sec)
-values (1, 1, 'https://news.naver.com/section/100', '네이버 정치 메인', 60),
-       (1, 1, 'https://news.naver.com/section/101', '네이버 경제 메인', 60),
-       (1, 1, 'https://news.naver.com/section/105', '네이버 IT/과학 메인', 60);
+insert into tbl_crawl_source (site_id, page_rule_id, source_url, description, crawl_interval_sec, is_active)
+values (1, 1, 'https://news.naver.com/section/100', '네이버 정치 메인', 60, 0),
+       (1, 1, 'https://news.naver.com/section/101', '네이버 경제 메인', 60, 1),
+       (1, 1, 'https://news.naver.com/section/105', '네이버 IT/과학 메인', 60, 0);
 
 
 create table tbl_crawl_target

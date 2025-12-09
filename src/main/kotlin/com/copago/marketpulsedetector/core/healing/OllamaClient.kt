@@ -12,7 +12,8 @@ import org.springframework.stereotype.Component
 @Component
 class OllamaClient(
     private val ollamaChatModel: OllamaChatModel,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val htmlSanitizer: HtmlSanitizer
 ) {
     private val logger = LoggerFactory.getLogger(OllamaClient::class.java)
     private val chatClient =
@@ -39,6 +40,7 @@ class OllamaClient(
         // 1. [중요] 입력 HTML 길이 제한 (Context Overflow 방지)
         // Llama3 8b 기준 약 4~8k 토큰 한계가 있으므로, 안전하게 문자열 길이로 자름.
         // 목록 탐색이나 제목 찾기는 상단 15,000자면 충분히 파악 가능.
+
         val truncatedHtml = if (htmlSource.length > 15000) {
             htmlSource.substring(0, 15000) + "...(truncated)"
         } else {
@@ -52,6 +54,7 @@ class OllamaClient(
             SelectorObjective.DISCOVERY_SCOPE -> """
                 ROLE: CSS Selector Generator Tool.
                 TASK: Find the CSS Selector for the PARENT CONTAINER that wraps the list items described by the user.
+                NOTE: Text content is replaced with 'T'. Focus on tags, classes, and IDs.
                 
                 [ONE-SHOT EXAMPLE]
                 User Input Description: "The main list of product cards."
@@ -74,6 +77,7 @@ class OllamaClient(
             SelectorObjective.DATA_EXTRACTION -> """
                 ROLE: CSS Selector Generator Tool.
                 TASK: Find the CSS Selector for the specific LEAF ELEMENT containing the data described by the user.
+                NOTE: Text content is replaced with 'T'. Focus on tags, classes, and IDs.
                 
                 [ONE-SHOT EXAMPLE]
                 User Input Description: "The product price text."

@@ -12,6 +12,7 @@ import com.copago.marketpulsedetector.domain.repository.CrawlTargetRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -119,82 +120,55 @@ class SelfHealingService(
         return 0
     }
 
-    private fun healExtractionRules(target: CrawlTargetEntity, sanitizedHtml: String, doc: Document): Int {
+    private fun healExtractionRules(target: CrawlTargetEntity, rawHtml: String, doc: Document): Int {
         val pageRule = target.pageRule ?: return 0
         val rules = extractionRuleRepository.findAllByPageRule(pageRule)
 
         var successCount = 0
 
         for (rule in rules) {
-            // 데이터가 추출 되는지?
+            // 1. 현재 규칙으로 추출 시도
             val currentElement = doc.selectFirst(rule.cssSelector)
-            val isMissing = if (currentElement == null) {
-                true
-            } else {
-                if (!rule.extractAttributes.isNullOrBlank()) {
-                    val attrName = rule.extractAttributes!!.split(",")[0].trim()
-                    currentElement.attr(attrName).isBlank()
-                } else {
-                    currentElement.text().isBlank()
-                }
-            }
 
-            // 필수 항목인데 비어있다면 치유 시도
-            if (isMissing && rule.isRequired) {
-                logger.warn("🚨 Rule Broken: [${rule.jsonKey}] selector '${rule.cssSelector}' failed.")
+            // 데이터가 비어있거나(null or blank) 검증 실패 시 Broken으로 판단
+            val isBroken = !isValidExtraction(currentElement, rule)
+
+            if (isBroken && rule.isRequired) {
+                logger.warn("🚨 Rule Broken: [${rule.jsonKey}]")
                 val targetDescription = generateTargetDescription(rule)
 
+                // 2. LLM 호출 (rawHtml을 넘기면 내부에서 sanitizeForStructure 수행)
                 val recommendation = try {
                     ollamaClient.recommendSelector(
-                        htmlSource = sanitizedHtml,
+                        htmlSource = rawHtml,
                         targetDescription = targetDescription,
                         objective = SelectorObjective.DATA_EXTRACTION
                     )
                 } catch (e: Exception) {
-                    logger.error("LLM call failed for ${rule.jsonKey}", e)
+                    logger.error("LLM call failed", e)
                     continue
                 }
 
                 val newSelector = recommendation.selector
 
-                // 새 선택자로 데이터가 추출되는지?
+                // 3. [검증 로직 강화] 새 선택자로 추출한 데이터가 유효한지 검사
                 if (!newSelector.isNullOrBlank()) {
                     val verificationElement = doc.selectFirst(newSelector)
-                    val isValid = if (verificationElement != null) {
-                        if (!rule.extractAttributes.isNullOrBlank()) {
-                            val attrName = rule.extractAttributes!!.split(",")[0].trim()
-                            verificationElement.attr(attrName).isNotBlank()
-                        } else {
-                            verificationElement.text().isNotBlank()
-                        }
-                    } else false
 
-                    if (isValid) {
-                        val updatedRule = rule.copy(
-                            cssSelector = newSelector,
-                            status = "ACTIVE"
-                        )
+                    if (isValidExtraction(verificationElement, rule)) {
+                        // 성공 시 업데이트 및 이력 저장 (기존 코드와 동일)
+                        val updatedRule = rule.copy(cssSelector = newSelector, status = "ACTIVE")
                         extractionRuleRepository.save(updatedRule)
-
-                        saveHistory(
-                            ruleId = rule.id!!,
-                            targetId = target.id!!,
-                            oldVal = rule.cssSelector,
-                            newVal = newSelector,
-                            reason = "LLM Fix: ${recommendation.reason}"
-                        )
+                        saveHistory(rule.id!!, target.id!!, rule.cssSelector, newSelector, recommendation.reason)
 
                         logger.info("✅ Healed [${rule.jsonKey}]! $newSelector")
                         successCount++
                     } else {
-                        logger.warn("❌ LLM suggested '$newSelector' for [${rule.jsonKey}] but verification failed.")
+                        logger.warn("❌ LLM suggested '$newSelector' but validation failed.")
                     }
                 }
-            } else if (isMissing && !rule.isRequired) {
-                logger.info("ℹ️ Optional Rule [${rule.jsonKey}] missing. Skipping.")
             }
         }
-
         return successCount
     }
 
@@ -229,5 +203,35 @@ class SelfHealingService(
                 isVerified = true
             )
         )
+    }
+
+    private fun isValidExtraction(element: Element?, rule: CrawlExtractionRuleEntity): Boolean {
+        if (element == null) return false
+
+        // 속성 추출인 경우 (예: src, href)
+        if (!rule.extractAttributes.isNullOrBlank()) {
+            val attrValue = element.attr(rule.extractAttributes!!.trim())
+            return attrValue.isNotBlank()
+            // 추가 검증: 이미지라면 http로 시작하는지 등
+            // && (!rule.jsonKey.contains("image") || attrValue.startsWith("http"))
+        }
+
+        // 텍스트 추출인 경우
+        val text = element.text().trim()
+        if (text.isBlank()) return false
+
+        // 1. 최소 길이 검사 (본문(content)인데 너무 짧으면 의심)
+        if (rule.jsonKey == "content" && text.length < 30) {
+            return false
+        }
+
+        // 2. 금지어(Blacklist) 검사
+        // 광고, 저작권 문구, 메뉴 이름 등이 잡히면 실패로 간주
+        val blackList = listOf("Copyright", "All rights reserved", "광고", "배너", "구독", "메인으로")
+        if (blackList.any { text.contains(it, ignoreCase = true) }) {
+            return false
+        }
+
+        return true
     }
 }
