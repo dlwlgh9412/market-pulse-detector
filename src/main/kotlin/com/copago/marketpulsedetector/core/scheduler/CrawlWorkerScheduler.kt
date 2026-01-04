@@ -30,6 +30,8 @@ class CrawlWorkerScheduler(
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val siteChannel = Channel<CrawlQueueManager.Site>(Channel.BUFFERED)
 
+    private var consecutiveEmptyFetches = 0
+
     @PostConstruct
     fun start() {
         startProducer()
@@ -45,9 +47,15 @@ class CrawlWorkerScheduler(
                     val sites = siteQueue.popAvailableSites(fetchSize)
 
                     if (sites.isEmpty()) {
-                        delay(1000)
+                        consecutiveEmptyFetches++
+                        val backOffDelay = minOf(5000L, 1000L * consecutiveEmptyFetches)
+                        delay(backOffDelay)
                     } else {
+                        consecutiveEmptyFetches = 0
                         sites.forEach { siteChannel.send(it) }
+
+                        val channelLoad = sites.size / fetchSize
+                        delay(100L * channelLoad)
                     }
                 } else {
                     delay(100)

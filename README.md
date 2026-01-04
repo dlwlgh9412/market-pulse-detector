@@ -28,8 +28,8 @@
 
 ### 3. 중복 제거
 * **Problem:** 수집 데이터가 늘어날수록 DB(`exists`) 조회가 성능 저하를 유발
-* **Solution:** **Redis BitMap 기반 필터링** 적용
-    * URL을 그대로 저장하지 않고 해시 처리 후 **비트(Bit) 단위로 마킹**하여 메모리 사용량을 최소화
+* **Solution:** Redis Key-Value 기반 중복 제거 적용
+* 초기에는 블룸 필터 기반을 검토했으나 실제 URL 수집 규모 및 러닝 커브를 고려해 단순하고 정확한 구조로 전환
 
 ---
 
@@ -40,6 +40,6 @@ com.copago.marketpulsedetector
 │   ├── executor   # Jsoup & Coroutine 기반 크롤링 실행
 │   ├── scheduler  # Channel 기반 작업 분배 (Producer-Consumer)
 │   ├── repository
-│   │   └── redis  # Lua Script & 중복 제거 구현체
-│   └── service    # 도메인 로직
+│   │   └── redis  # Lua Script 기반 스케줄링
+│   └── service    # 도메인 로직 & 중복 제거 구현체
 └── config         # Redis, WebClient 설정

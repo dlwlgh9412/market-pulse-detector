@@ -6,6 +6,7 @@ import com.copago.marketpulsedetector.core.repository.CrawlSeedRepository
 import com.copago.marketpulsedetector.core.repository.redis.CrawlQueueManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 
@@ -33,8 +34,9 @@ class CrawlDispatchService(
             queueRepository.findNextCrawlJob(
                 siteInfo.id,
                 CrawlStatus.READY,
-                LocalDateTime.now()
-            )
+                LocalDateTime.now(),
+                PageRequest.of(0, 1)
+            ).firstOrNull()
         }
 
         if (nextTask != null) {

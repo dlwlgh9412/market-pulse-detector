@@ -80,7 +80,7 @@ class CrawlQueueManager(
         return result
     """
 
-    suspend fun popAvailableSites(limit: Int = 5): List<Site> = withContext(Dispatchers.IO) {
+    suspend fun popAvailableSites(limit: Int = 1): List<Site> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         val script = DefaultRedisScript(POP_SCRIPT, List::class.java)
 

@@ -2,6 +2,7 @@ package com.copago.marketpulsedetector.core.repository
 
 import com.copago.marketpulsedetector.core.domain.model.CrawlQueue
 import com.copago.marketpulsedetector.core.domain.model.CrawlStatus
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.EntityGraph
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
@@ -22,14 +23,14 @@ interface CrawlQueueRepository : JpaRepository<CrawlQueue, Long> {
         and q.status = :status
         and q.nextRunAt <= :now
         order by q.nextRunAt asc
-        limit 1
     """
     )
     fun findNextCrawlJob(
         @Param("siteId") siteId: Long,
         @Param("status") status: CrawlStatus,
         @Param("now") now: LocalDateTime,
-    ): CrawlQueue?
+        pageable: Pageable
+    ): List<CrawlQueue>
 
     @Query(
         """
@@ -38,10 +39,9 @@ interface CrawlQueueRepository : JpaRepository<CrawlQueue, Long> {
         where q.status in ('PROCESSING', 'FAIL')
         and q.expiredAt < now()
         order by q.expiredAt
-        limit 1
     """
     )
-    fun findTimeOutQueue(): CrawlQueue?
+    fun findTimeOutQueue(pageable: Pageable): List<CrawlQueue>
 
     @Modifying(clearAutomatically = true)
     @Query(

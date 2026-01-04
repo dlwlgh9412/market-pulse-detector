@@ -36,7 +36,8 @@ class CrawlQueueService(
     suspend fun createQueues(queues: List<QueueCreateCommand>) = coroutineScope {
         if (queues.isEmpty()) return@coroutineScope
 
-        val filteredQueues = queues.filter { !duplicationService.isDuplicateOrMark(it.url) }
+//        val filteredQueues = queues.filter { !duplicationService.isContain(it.url) }
+        val filteredQueues = duplicationService.filterNewQueues(queues)
 
         if (filteredQueues.isEmpty()) return@coroutineScope
 

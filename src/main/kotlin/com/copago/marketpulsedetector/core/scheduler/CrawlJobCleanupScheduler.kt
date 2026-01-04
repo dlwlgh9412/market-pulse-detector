@@ -3,9 +3,13 @@ package com.copago.marketpulsedetector.core.scheduler
 import com.copago.marketpulsedetector.core.properties.CrawlerProperties
 import com.copago.marketpulsedetector.core.repository.CrawlQueueRepository
 import com.copago.marketpulsedetector.core.service.CrawlQueueService
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
+import org.springframework.data.domain.PageRequest
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -18,16 +22,19 @@ class CrawlJobCleanupScheduler(
     private val properties: CrawlerProperties
 ) {
     private val logger = LoggerFactory.getLogger(CrawlJobCleanupScheduler::class.java)
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     @Scheduled(fixedDelay = 60000)
-    suspend fun cleanup() {
-        val queue = withContext(Dispatchers.IO) {
-            queueRepository.findTimeOutQueue()
-        }
+    fun cleanup() {
+        scope.launch {
+            val queue = withContext(Dispatchers.IO) {
+                queueRepository.findTimeOutQueue(PageRequest.of(0, 1)).firstOrNull()
+            }
 
-        if (queue != null) {
-            queue.markAsProcessing(properties.workerId)
-            queueService.process(queue)
+            if (queue != null) {
+                queue.markAsProcessing(properties.workerId)
+                queueService.process(queue)
+            }
         }
     }
 
